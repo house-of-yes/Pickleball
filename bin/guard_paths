@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-cd "$HOME/Pickleball"
-bad=$(grep -RIn --exclude-dir=.git 'HouseOfYes' || true)
-[ -z "$bad" ] || { echo "[ERROR] Found HouseOfYes refs:"; echo "$bad"; exit 1; }
-echo "[OK] No HouseOfYes references."

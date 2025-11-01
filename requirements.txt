@@ -1,6 +1,6 @@
-# RUNTIME ONLY (Termux-safe)
-typer<0.13
-structlog==24.4.0
-pydantic==1.10.15
-python-dotenv==1.0.1
+starlette==0.39.2
+uvicorn==0.30.6
+anyio==4.4.0
+httpx==0.28.1
+pytest==8.3.2
 requests==2.32.3

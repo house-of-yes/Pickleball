@@ -1,66 +1,45 @@
 # Pickleball
 
-## Quickstart
-cd Pickleball
-pip install -r requirements.txt
-make bootstrap
-make check
+Pickleball is a daemon + CLI for editing, testing, and interacting with code from anywhere.  
 
-## Usage Examples
-# Show CLI help
-python cli.py --help
+OIt runs as a background service and exposes a simple HTTP+WS API.  
 
-# Show version info
-python cli.py version
+## ⚡ Test Scope Strategy
 
-# Dump config (masked by default)
-python cli.py config
+Pickleball integrates directly with your test suite. By default, it runs *targeted fast tests* while you’re iterating, and the *full suite* before any commit.
 
-# Run health checks
-python cli.py doctor
+### Default (smart mode)
+- **On apply:** run only tests most likely to be affected  
+  (same module, matching test files, `--last-failed` cache).  
+- **On commit:** full project suite is required green before the commit lands.
 
-# After installing in editable mode
-pip install -e .
-Pickleball --help
-Pickleball version
-Pickleball config --no-mask
-Pickleball doctor
+### Config (via env)
+| Variable                  | Values                 | Default  | Notes                                             |
+|---------------------------|------------------------|----------|---------------------------------------------------|
+| `EXCALIBUR_TEST_SCOPE`    | `full` \| `changed` \| `smart` | `smart`  | `full`: always whole suite. `changed`: only targeted subset. `smart`: subset on apply, full on commit. |
+| `EXCALIBUR_TEST_CMD`      | custom command string  | `pytest` | Base test runner.                                 |
+| `EXCALIBUR_TEST_TIMEOUT`  | seconds                | `30`     | Kill tests that exceed this runtime.              |
+| `EXCALIBUR_TEST_SELECTORS`| globs/comma-sep        | *(none)* | Override auto-detection; e.g. `tests/unit,tests/foo`. |
+| `EXCALIBUR_PYTEST_ARGS`   | extra args             | *(none)* | Extra args; e.g. `-n auto` for parallel runs with `xdist`. |
 
-## Quality
-make lint
-make type
-make fmt
-pre-commit install
+### Transparency
+Each run reports the chosen scope:
+[ok] Test scope: subset (tests/pkg/test_foo.py, tests/test_math.py)
+[ok] 5 passed in 0.42s
 
+On commit, you’ll always see:
+[ok] Test scope: full suite
+[ok] 124 passed in 12.3s
 
-## State & Logs
+This keeps iteration fast while guaranteeing correctness at the commit wall.
 
-Pickleball keeps its own health records:
+The xcal command provides a lean interface to send files, fetch them back, and check health/version.
 
-State JSON (latest snapshot):
+---
 
-var/state/bootstrap.json — environment + toolchain contract.
+## Setup (Termux)
 
-var/state/diagnostic.json — extended system + repo checks.
-
-Each run overwrites the previous file (always “latest truth”).
-
-
-Logs (history, human-readable):
-
-var/logs/bootstrap.YYYYMMDD-HHMMSS.log
-
-var/logs/diagnostic.YYYYMMDD-HHMMSS.log
-
-bootstrap.latest.log / diagnostic.latest.log symlinks (copy fallback on Android FS).
-
-
-
-These files are idempotent checkpoints: JSON is for machines, logs are for humans. Both update on every run. Exit codes: 0 = clean, 2 = warnings only, 1 = errors.
-
-
-
-
-
-
-
+1. Clone this repo and enter it:
+   ```bash
+   git clone <your-repo-url>
+   cd HouseOfYes/Pickleball

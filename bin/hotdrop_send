@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-FIFO="$HOME/var/Pickleball/run/hotdrop_in.fifo"
-[ -p "$FIFO" ] || { echo "fifo missing"; exit 1; }
-cat - > "$FIFO"

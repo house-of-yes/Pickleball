@@ -1,5 +1,0 @@
-[events] {"type": "apply_started", "path": "/data/data/com.termux/files/home/HouseOfYes/Pickleball/roles/example.py"}
-[events] {"type": "file_applied", "path": "/data/data/com.termux/files/home/HouseOfYes/Pickleball/roles/example.py"}
-[events] {"type": "apply_started", "path": "/data/data/com.termux/files/home/HouseOfYes/Pickleball/pkg/mod.py"}
-[events] {"type": "file_applied", "path": "/data/data/com.termux/files/home/HouseOfYes/Pickleball/pkg/mod.py"}
-[events] {"type": "file_sent", "path": "/data/data/com.termux/files/home/HouseOfYes/Pickleball/pkg/mod.py", "size": 11}

@@ -1,3 +1,0 @@
-[console_scripts]
-Pickleball = Pickleball.cli:app
-xcal = Pickleball.cli:app
