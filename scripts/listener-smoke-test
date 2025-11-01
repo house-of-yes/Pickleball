@@ -1,0 +1,96 @@
+scripts/listener-smoke-test
+#!/usr/bin/env bash
+# Pickleball Listener Smoke Test — non-hanging, log/JSON driven
+# Success criteria (either is fine):
+#   1) listener.log gains a new "riot-act dump via ..." line
+#   2) last_run.json shows {mode:"riot", ok:true} (once listener writes riot JSON)
+#
+# Env:
+#   EXC_SMOKE_TIMEOUT  total seconds to wait (default 10)
+
+set -euo pipefail
+
+FIFO="${FIFO_PATH:-$HOME/.Pickleball/bridge/inbox.patch}"
+LOG="${LOG_FILE:-$HOME/.Pickleball/bridge/listener.log}"
+PIDFILE="${PIDFILE_PATH:-$HOME/.Pickleball/bridge/listener.pid}"
+REPORT="${REPORT_PATH:-$HOME/.Pickleball/bridge/last_run.json}"
+TIMEOUT="${EXC_SMOKE_TIMEOUT:-10}"
+
+ts() { date +"%Y-%m-%dT%H:%M:%S%z" | sed 's/(..)$/:\1/'; }
+
+ok()   { printf "[OK] %s\n" "$*"; }
+warn() { printf "[WARN] %s\n" "$*"; }
+fail() { printf "[FAIL] %s\n" "$*"; exit 1; }
+
+pid_is_alive() {
+  local p="$1"
+  [[ -n "$p" && -d "/proc/$p" ]]
+}
+
+# ---------- Preconditions ----------
+[[ -p "$FIFO" ]] || fail "FIFO missing/not a pipe: $FIFO"
+[[ -f "$LOG"  ]] || fail "listener log missing: $LOG"
+
+if [[ -f "$PIDFILE" ]]; then
+  pid="$(cat "$PIDFILE" 2>/dev/null || true)"
+  if ! pid_is_alive "$pid"; then
+    warn "listener.pid present but not alive (pid=$pid)"
+  fi
+else
+  warn "listener.pid not found (continuing)"
+fi
+
+# Baselines
+prev_riot_count="$(grep -c 'riot-act dump via' "$LOG" 2>/dev/null || echo 0)"
+prev_report_sha="$(sha256sum "$REPORT" 2>/dev/null | awk '{print $1}' || echo "")"
+
+printf "=== RIOT ACT ===\n"
+
+# One-shot write — closes FD immediately so listener sees EOF and proceeds
+printf 'read the riot act\n' > "$FIFO"
+
+# ---------- Wait loop ----------
+deadline=$(( $(date +%s) + TIMEOUT ))
+reported_ok=""
+while :; do
+  now=$(date +%s)
+  # 1) Check log growth
+  cur_riot_count="$(grep -c 'riot-act dump via' "$LOG" 2>/dev/null || echo 0)"
+  if (( cur_riot_count > prev_riot_count )); then
+    ok "riot observed in listener.log"
+    exit 0
+  fi
+
+  # 2) Check JSON report (if jq/report available)
+  if command -v jq >/dev/null 2>&1 && [[ -f "$REPORT" ]]; then
+    cur_report_sha="$(sha256sum "$REPORT" 2>/dev/null | awk '{print $1}' || echo "")"
+    if [[ "$cur_report_sha" != "$prev_report_sha" && -n "$cur_report_sha" ]]; then
+      mode="$(jq -r '.mode // empty' "$REPORT" 2>/dev/null || true)"
+      okv="$(jq -r '.ok // empty' "$REPORT" 2>/dev/null || true)"
+      if [[ "$mode" == "riot" && "$okv" == "true" ]]; then
+        ok "riot reported ok in last_run.json"
+        exit 0
+      fi
+    fi
+  fi
+
+  # timeout?
+  if (( now >= deadline )); then
+    printf "[FAIL] riot signal not detected within %ss\n" "$TIMEOUT"
+    printf "---- listener.log (tail) ----\n"
+    tail -n 20 "$LOG" || true
+    if [[ -f "$REPORT" ]]; then
+      printf "---- last_run.json ----\n"
+      if command -v jq >/dev/null 2>&1; then
+        jq . "$REPORT" 2>/dev/null || cat "$REPORT" || true
+      else
+        cat "$REPORT" || true
+      fi
+    else
+      printf "---- last_run.json ----\n(no report file)\n"
+    fi
+    exit 1
+  fi
+
+  sleep 0.2
+done

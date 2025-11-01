@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# Pickleball control script (repo-local).
+# Usage:
+#   ex ./Pickleball/bin/excaliburctl run            # run uvicorn (foreground)
+#   ex ./Pickleball/bin/excaliburctl health         # GET /health
+#   ex ./Pickleball/bin/excaliburctl version        # GET /version
+#   ex ./Pickleball/bin/excaliburctl apply <file>   # JSON apply of a local file (path-relative)
+#   ex ./Pickleball/bin/excaliburctl tests          # run test command in WORKSPACE
+#   ex ./Pickleball/bin/excaliburctl tail [log]     # tail daemon log (EXCALIBUR_LOG_FILE)
+#   ex ./Pickleball/bin/excaliburctl help
+
+set -euo pipefail
+
+# --- repo & env ---------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"     # points at ./Pickleball
+PROJECT_ROOT="$(cd "$REPO_ROOT/.." && pwd)"   # repo root
+ENV_FILE="$PROJECT_ROOT/.env"
+
+# Load .env if present
+if [[ -f "$ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+fi
+
+# Defaults
+export PORT="${PORT:-8765}"
+export EXCALIBUR_WORKSPACE="${EXCALIBUR_WORKSPACE:-$PROJECT_ROOT}"
+export EXCALIBUR_LOG_FILE="${EXCALIBUR_LOG_FILE:-$PROJECT_ROOT/.ide-bridge.log}"
+BASE_URL="${BASE_URL:-http://127.0.0.1:$PORT}"
+TOKEN_HEADER=()
+[[ -n "${EXCALIBUR_TOKEN:-}" ]] && TOKEN_HEADER=( -H "X-Pickleball-Token: $EXCALIBUR_TOKEN" )
+
+# Activate venv if available
+if [[ -f "$PROJECT_ROOT/venv/bin/activate" ]]; then
+  # shellcheck disable=SC1091
+  . "$PROJECT_ROOT/venv/bin/activate"
+fi
+
+# HTTP helper
+http() { curl -fsS "$@"; }
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+  run)
+    # Foreground uvicorn (safe defaults)
+    exec uvicorn Pickleball:app --host 127.0.0.1 --port "$PORT" --no-access-log
+    ;;
+  health)
+    http "${TOKEN_HEADER[@]}" "$BASE_URL/health" | jq .
+    ;;
+  version)
+    http "${TOKEN_HEADER[@]}" "$BASE_URL/version" | jq .
+    ;;
+  apply)
+    file="${1:-}"
+    [[ -z "$file" ]] && { echo "usage: $0 apply <file>"; exit 2; }
+    rel="$(realpath --relative-to="$EXCALIBUR_WORKSPACE" "$file" 2>/dev/null || echo "$file")"
+    content="$(cat "$file")"
+    payload=$(jq -n --arg p "$rel" --arg c "$content" '{path:$p, content:$c, run_tests:true}')
+    http -X POST -H "Content-Type: application/json" "${TOKEN_HEADER[@]}" \
+         --data "$payload" "$BASE_URL/apply" | jq .
+    ;;
+  tests)
+    # Use the daemon's configured test command if set; otherwise basic pytest
+    ( cd "$EXCALIBUR_WORKSPACE" && ${EXCALIBUR_TEST_CMD:-"PYTHONPATH=. pytest -q"} )
+    ;;
+  tail)
+    log="${1:-$EXCALIBUR_LOG_FILE}"
+    echo "[i] Tailing $log"
+    exec tail -F "$log"
+    ;;
+  help|*)
+    cat <<EOF
+Pickleball control:
+  run                Run the daemon in foreground
+  health             Show /health JSON
+  version            Show /version JSON
+  apply <file>       Apply local file (JSON payload) and run tests
+  tests              Run tests in \$EXCALIBUR_WORKSPACE
+  tail [log]         Tail daemon log (default: \$EXCALIBUR_LOG_FILE)
+
+Env vars:
+  PORT (default: 8765)
+  EXCALIBUR_WORKSPACE (default: repo root)
+  EXCALIBUR_LOG_FILE (default: .ide-bridge.log in repo root)
+  EXCALIBUR_TOKEN (optional, sent as X-Pickleball-Token)
+EOF
+    ;;
+esac
+

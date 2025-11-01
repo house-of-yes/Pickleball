@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$HOME/Pickleball"
+QUEUE="var/run/live_queue.sh"; OFFSET="var/run/live_offset"
+mkdir -p "$(dirname "$QUEUE")" "$(dirname "$OFFSET")"
+touch "$QUEUE" "$OFFSET"
+
+echo "live_serve listening — press Enter for next Hotdrop."
+
+while true; do
+  read -r _
+  start="$(cat "$OFFSET" 2>/dev/null || true)"
+  [[ -z "$start" ]] && start=0
+
+  echo "[DEBUG] OFFSET(start): $start"
+
+  next=$(awk -v s="$start" 'NR>s && /^### HOTDROP-BEGIN/{print NR; exit}' "$QUEUE" || true)
+  echo "[DEBUG] NEXT line: ${next:-none}"
+
+  if [ -z "$next" ]; then
+    echo "No new Hotdrops."
+    continue
+  fi
+
+  end=$(awk -v b="$next" 'NR>=b && /^### HOTDROP-END/{print NR; exit}' "$QUEUE" || true)
+  echo "[DEBUG] END line: ${end:-none}"
+
+  if [ -z "$end" ]; then
+    echo "Incomplete Hotdrop."
+    continue
+  fi
+
+  block="$(mktemp)"
+  sed -n "${next},${end}p" "$QUEUE" > "$block"
+
+  echo ">>> Executing Hotdrop lines $next-$end <<<"
+  echo "===== MIRROR BEGIN (TERMUX) ====="
+  cat "$block"
+  echo "===== MIRROR END (TERMUX) ====="
+
+  bash "$block"
+  echo ">>> Done <<<"
+
+  rm -f "$block"
+  echo "$end" > "$OFFSET"
+done

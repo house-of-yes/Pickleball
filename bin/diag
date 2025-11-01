@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+RT="$HOME/var/Pickleball"; RUN="$RT/run"; LOG="$RT/logs"
+echo "== DIAG $(date -Is) =="
+[ -p "$RUN/hotdrop_in.fifo" ] && echo "fifo: ok" || echo "fifo: MISSING"
+echo "-- procs --"; pgrep -af 'bin/live_runner|bin/hotdrop_subscribe' || echo "none"
+echo "-- logs --"; tail -n 10 "$LOG/live_runner.log" 2>/dev/null || true

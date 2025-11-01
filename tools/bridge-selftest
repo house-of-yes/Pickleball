@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+IFS=$'\n\t'
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
+REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || CDPATH= cd -- "$SCRIPT_DIR/.." && pwd -P)"
+TARGET_REL="${1:-tools/hello}"
+MSG="${2:-ok}"
+ALIAS_FIFO="$HOME/.Pickleball/bridge/inbox.patch"
+TARGET_ABS="$(realpath -m -- "$REPO_ROOT/$TARGET_REL")"
+[[ -p "$ALIAS_FIFO" ]] || { echo "[ERR] FIFO missing: $ALIAS_FIFO"; exit 2; }
+rm -f -- "$TARGET_ABS" 2>/dev/null || true
+mkdir -p -- "$(dirname -- "$TARGET_ABS")"
+( printf '```bash\n%s\necho "%s"\n```\n' "$TARGET_REL" "$MSG" > "$ALIAS_FIFO" ) &
+for _ in 1 2 3 4 5 6 7 8 9 10; do [[ -f "$TARGET_ABS" ]] && break; sleep 0.2; done
+if [[ -f "$TARGET_ABS" ]]; then
+  echo "[✓] created: ${TARGET_ABS#$REPO_ROOT/}"; echo "[contents]"; cat -- "$TARGET_ABS"
+else
+  echo "[ERR] file not created: ${TARGET_ABS#$REPO_ROOT/}"; exit 3
+fi

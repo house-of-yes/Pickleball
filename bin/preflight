@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+REPO="$HOME/Pickleball"
+RT="$HOME/var/Pickleball"; RUN="$RT/run"; LOG="$RT/logs"
+
+ok(){ printf 'OK   %s\n' "$1"; }
+wr(){ printf 'WARN %s\n' "$1"; W=$((W+1)); }
+er(){ printf 'ERR  %s\n' "$1"; E=$((E+1)); }
+
+W=0; E=0
+echo "== PREFLIGHT $(date -Is) =="
+
+# tools
+for t in bash awk dd pgrep mkfifo nohup sed date tail; do
+  command -v "$t" >/dev/null 2>&1 && ok "tool: $t" || er "missing tool: $t"
+done
+
+# bash version
+BV="$(bash -c 'echo ${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}' 2>/dev/null || echo 0)"
+case "$BV" in
+  ''|0) wr "bash version unknown";;
+  *) ver_major="${BV%%.*}"; [ "$ver_major" -ge 5 ] && ok "bash >=5 ($BV)" || wr "bash <5 ($BV)";;
+esac
+
+# paths
+[ -d "$REPO" ] && ok "repo: $REPO" || er "repo missing: $REPO"
+mkdir -p "$RUN" "$LOG" && ok "runtime dirs ok" || er "runtime dirs fail"
+mkdir -p "$REPO/bin" "$REPO/docs" && ok "repo subdirs ok" || er "repo subdirs fail"
+
+# perms
+touch "$RUN/.touch" 2>/dev/null && ok "write ok: $RUN" || er "no write: $RUN"
+rm -f "$RUN/.touch" 2>/dev/null || true
+[ -w "$REPO" ] && ok "write ok: $REPO" || er "no write: $REPO"
+
+# fifo sanity (will be (re)created in bootstrap)
+if [ -p "$RUN/hotdrop_in.fifo" ]; then ok "fifo present"; else wr "fifo not present (will create)"; fi
+
+# scripts presence
+[ -x "$REPO/bin/live_runner" ] && ok "live_runner present" || wr "live_runner missing"
+[ -x "$REPO/bin/hotdrop_subscribe" ] && ok "hotdrop_subscribe present" || wr "hotdrop_subscribe missing"
+
+# path export hint
+echo "$PATH" | grep -q "$REPO/bin" && ok "PATH includes repo bin" || wr "PATH lacks $REPO/bin"
+
+echo "== SUMMARY: ERR=$E WARN=$W =="
+exit "$E"

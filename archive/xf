@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# xf — Pickleball Flow bootstrap (Termux/Unix friendly)
+# Usage: xf {start|test|note|park|mark|focus|stop} [args...]
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+gk="$root/GoldenKey.md"
+fe="$root/Pickleball/FlowEntry.md"
+efs="$root/Pickleball/ExcaliburFlowState.md"
+
+ensure_files() {
+  mkdir -p "$(dirname "$efs")"
+  [ -f "$efs" ] || { echo "# Pickleball Flow State — Anchor" > "$efs"; echo "" >> "$efs"; }
+}
+print_header() {
+  [ -f "$gk" ] && { echo "🔑 Golden Key:"; sed -n '1,40p' "$gk"; echo "-----"; } || true
+  [ -f "$fe" ] && { echo "⚔️  Entry Conditions:"; sed -n '1,80p' "$fe"; echo "-----"; } || true
+}
+append_now_box() {
+  local now="$1" dod="$2" tb="$3"
+  {
+    echo "## Now Box"
+    echo "Now: $now"
+    echo "Definition of Done: $dod"
+    echo "Timebox: $tb"
+    echo ""
+  } >> "$efs"
+}
+timestamp() { date +"%Y-%m-%d %H:%M:%S"; }
+
+cmd="${1:-help}"; shift || true
+ensure_files
+
+case "$cmd" in
+  start)
+    print_header
+    echo -n "Now: "; IFS= read -r now
+    echo -n "Definition of Done: "; IFS= read -r dod
+    echo -n "Timebox (e.g., 25m): "; IFS= read -r tb
+    echo ""
+    echo "[ $(timestamp) ] Flow start → $now  (DoD: $dod, TB: $tb )"
+    append_now_box "$now" "$dod" "$tb"
+    echo "Tip: run 'xf test' for a warm start. (Timer not implemented yet.)"
+    ;;
+  test)
+    echo "[ $(timestamp) ] Running tests…"
+    PYTHONPATH=. pytest -q || true
+    ;;
+  note)
+    [ $# -gt 0 ] || { echo "Usage: xf note \"<insight>\""; exit 2; }
+    echo "- Insight: $*" >> "$efs"
+    echo "[ $(timestamp) ] Noted."
+    ;;
+  park)
+    [ $# -gt 0 ] || { echo "Usage: xf park \"<open loop>\""; exit 2; }
+    echo "- Parking Lot: $*" >> "$efs"
+    echo "[ $(timestamp) ] Parked."
+    ;;
+  mark)
+    msg="${*:-checkpoint}"
+    echo "- Mark: $msg @ $(timestamp)" >> "$efs"
+    echo "[ $(timestamp) ] Marked: $msg"
+    ;;
+  focus)
+    dur="${1:-15m}"
+    echo "[ $(timestamp) ] Focus window: $dur (manual timer)."
+    ;;
+  stop)
+    echo "[ $(timestamp) ] Flow stop. Update 'Now → Done' in $efs and commit."
+    ;;
+  help|*)
+    cat <<'USAGE'
+xf — Pickleball Flow bootstrap
+Commands:
+  start        # show key/entry, capture Now/DoD/Timebox → append to ExcaliburFlowState.md
+  test         # runs PYTHONPATH=. pytest -q (non-fatal)
+  note "..."   # append an Insight line
+  park "..."   # append a Parking Lot line
+  mark "..."   # timestamped checkpoint
+  focus [15m]  # announce a short focus window
+  stop         # suggest closing loop (update Now→Done, commit)
+USAGE
+    ;;
+esac

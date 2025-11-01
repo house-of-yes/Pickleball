@@ -1,0 +1,72 @@
+scripts/bootstrap
+#!/usr/bin/env bash
+# bootstrap — one-shot, non-interactive setup for Pickleball on Termux/Linux.
+# - Creates repo dirs (var/logs, var/tmp)
+# - Rebuilds the repo-scoped FIFO + alias (optional --reset)
+# - Starts scripts/bridge-listener for THIS repo
+# - Optional self-test writes tools/hello via the FIFO and verifies it
+#
+# Usage:
+#   scripts/bootstrap                 # normal start (no reset)
+#   scripts/bootstrap --reset         # kill old listener, rebuild FIFO, start fresh
+#   scripts/bootstrap --self-test     # run a tiny end-to-end write test
+#   scripts/bootstrap --reset --self-test
+set -euo pipefail
+IFS=$'\n\t'
+
+# --- repo root (prefer git; fallback to script/..) ---
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
+REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || CDPATH= cd -- "$SCRIPT_DIR/.." && pwd -P)"
+REPO_NAME="$(basename -- "$REPO_ROOT")"
+
+RESET=0
+SELFTEST=0
+for a in "${@:-}"; do
+  case "$a" in
+    --reset) RESET=1;;
+    --self-test|--selftest) SELFTEST=1;;
+    -h|--help)
+      echo "Usage: $0 [--reset] [--self-test]"; exit 0;;
+    *) echo "[WARN] ignoring arg: $a" >&2;;
+  esac
+done
+
+# --- ensure dirs ---
+mkdir -p "$REPO_ROOT/var/logs" "$REPO_ROOT/var/tmp" "$REPO_ROOT/scripts" "$REPO_ROOT/tools"
+BRIDGE_HOME="${HOME}/.Pickleball/bridge"
+REPO_BRIDGE_DIR="${BRIDGE_HOME}/${REPO_NAME}"
+mkdir -p "$REPO_BRIDGE_DIR"
+
+FIFO="${REPO_BRIDGE_DIR}/inbox.patch"
+ALIAS="${BRIDGE_HOME}/inbox.patch"
+
+# --- optional reset: kill listener & rebuild fifo/alias ---
+if (( RESET == 1 )); then
+  pkill -f "scripts/bridge-listener" 2>/dev/null || true
+  rm -f "$ALIAS" "$FIFO" 2>/dev/null || true
+  mkfifo "$FIFO"
+  ln -s "$FIFO" "$ALIAS"
+else
+  # create if missing
+  [[ -p "$FIFO" ]] || { rm -f "$FIFO" 2>/dev/null || true; mkfifo "$FIFO"; }
+  # ensure alias points here
+  if [[ "$(readlink -f "$ALIAS" 2>/dev/null || true)" != "$FIFO" ]]; then
+    rm -f "$ALIAS" 2>/dev/null || true
+    ln -s "$FIFO" "$ALIAS"
+  fi
+fi
+
+# --- start listener if not running ---
+if pgrep -f "scripts/bridge-listener" >/dev/null 2>&1; then
+  echo "[*] listener already running"
+else
+  ( cd "$REPO_ROOT" && scripts/bridge-listener >> "$REPO_ROOT/var/logs/bridge-listener.run.log" 2>&1 & )
+  # tiny settle delay
+  sleep 0.2
+  echo "[*] listener started"
+fi
+
+# --- optional self-test: write tools/hello through FIFO and verify ---
+if (( SELFTEST == 1 )); then
+  # clear old test file
+  rm -f "$REPO_ROOT/tools/hello" 2>/dev/null || true

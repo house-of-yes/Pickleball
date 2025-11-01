@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -euo pipefail
+IFS=$'\n\t'
+
+# Resolve repo root & paths
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
+REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || CDPATH= cd -- "$SCRIPT_DIR/.." && pwd -P)"
+LOG="$REPO_ROOT/var/logs/bridge-listener.run.log"
+TMPBASE="$REPO_ROOT/var/tmp"
+BRIDGE_DIR="$HOME/.Pickleball/bridge"
+FIFO="$BRIDGE_DIR/inbox.patch"
+mkdir -p "$TMPBASE" "$(dirname "$LOG")" "$BRIDGE_DIR"
+[[ -p "$FIFO" ]] || { rm -f "$FIFO" 2>/dev/null || true; mkfifo "$FIFO"; }
+
+ts(){ date -u +%FT%TZ; }
+log(){ printf "[%s] %s\n" "$(ts)" "$*" >> "$LOG"; }
+
+# Stay in this repo only
+resolve_path(){
+  local spec="$1" rn out
+  spec="$(printf "%s" "$spec" | sed -e "s/^[[:space:]]*//" -e "s/[[:space:]]*$//")"
+  rn="$(basename -- "$REPO_ROOT")"
+  [[ "$spec" == "$rn/"* ]] && spec="${spec#"$rn/"}"
+  if [[ "$spec" == /* ]]; then out="$(realpath -m -- "$spec")" || return 1
+  else out="$(realpath -m -- "$REPO_ROOT/$spec")" || return 1; fi
+  case "$out" in "$REPO_ROOT"/*) printf "%s" "$out";; *) return 2;; esac
+}
+
+write_atomic(){
+  local dst="$1"; local td tmp
+  td="$(mktemp -d -p "$TMPBASE" bl.XXXXXX 2>/dev/null || mktemp -d)"
+  tmp="$td/.payload"
+  cat > "$tmp"
+  mkdir -p "$(dirname -- "$dst")"
+  install -m 0644 "$tmp" "$dst"
+  case "$dst" in */tools/*|*/scripts/*) chmod 755 "$dst" 2>/dev/null || true;; esac
+  rm -rf "$td" 2>/dev/null || true
+}
+
+log "listener up root=$REPO_ROOT fifo=$FIFO log=$LOG"
+( while :; do echo "[heartbeat]" >> "$LOG"; sleep 1; done ) &  # visible activity
+
+while true; do
+  # wait for opening fence
+  if ! IFS= read -r line < "$FIFO"; then sleep 0.02; continue; fi
+  until [[ "$line" == \`\`\`* ]]; do
+    if ! IFS= read -r line < "$FIFO"; then sleep 0.01; fi
+  done
+  # first in-block line = path
+  if ! IFS= read -r target < "$FIFO"; then log "[ERR] EOF waiting for path"; continue; fi
+  if ! dest="$(resolve_path "$target")"; then
+    log "[ERR] reject path='$target' (outside repo)";
+    while IFS= read -r line < "$FIFO"; do [[ "$line" == \`\`\` ]] && break; done
+    continue
+  fi
+  { while IFS= read -r line < "$FIFO"; do [[ "$line" == \`\`\` ]] && break; printf "%s\n" "$line"; done; } | write_atomic "$dest"
+  log "WROTE ${dest#$REPO_ROOT/}"
+done

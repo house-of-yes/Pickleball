@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Send an artifact into the bridge inbox (FIFO). Reads stdin or a file.
+set -euo pipefail
+INBOX="$HOME/.Pickleball/bridge/inbox.patch"
+
+if [[ ! -p "$INBOX" ]]; then
+  echo "[bridge-send] inbox FIFO not found at $INBOX" >&2
+  exit 1
+fi
+
+if [[ $# -gt 0 ]]; then
+  cat "$1" > "$INBOX"
+else
+  cat > "$INBOX"
+fi

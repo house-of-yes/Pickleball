@@ -1,0 +1,73 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# Setup Termux service for Pickleball and ensure CLI tools are globally available.
+
+set -euo pipefail
+
+say()  { printf '[i] %s\n' "$*\n"; }
+ok()   { printf '\033[1;32m[ok]\033[0m %s\n' "$*\n"; }
+warn() { printf '\033[1;33m[!]\033[0m %s\n' "$*\n"; }
+
+SERVICE_DIR="$PREFIX/etc/sv/Pickleball"
+SERVICE_LINK="$PREFIX/var/service/Pickleball"
+BIN_DIR="$(dirname "$0")"
+GLOBAL_BIN_DIR="$PREFIX/bin"
+# Ensure $PREFIX/bin is in PATH for future shells (bash & zsh), idempotent
+for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+  [ -f "$rc" ] || : >"$rc"
+  if ! grep -q 'export PATH=\$PREFIX/bin:\$PATH' "$rc"; then
+    printf '\n# Pickleball: ensure Termux bin on PATH\nexport PATH=$PREFIX/bin:$PATH\n' >>"$rc
+
+# --- PATH check --------------------------------------------------------------
+case ":$PATH:" in
+  *":$GLOBAL_BIN_DIR:"*) : ;;  # ok
+  *)
+    warn "\$PREFIX/bin is not in your PATH."
+    warn "Add this line to your shell profile (~/.bashrc or ~/.zshrc):"
+    warn "    export PATH=\$PREFIX/bin:\$PATH"
+    ;;
+esac
+# ------------------------------------------------------------------------------
+
+say "Creating service definition: $SERVICE_DIR"
+mkdir -p "$SERVICE_DIR/log/main"
+
+cat >"$SERVICE_DIR/run" <<'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+exec uvicorn Pickleball:app --host 127.0.0.1 --port 8765
+EOF
+chmod +x "$SERVICE_DIR/run"
+
+cat >"$SERVICE_DIR/log/run" <<'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+exec svlogd -tt ./main
+EOF
+chmod +x "$SERVICE_DIR/log/run"
+
+say "Linking into var/service: $SERVICE_LINK -> $SERVICE_DIR"
+ln -snf "$SERVICE_DIR" "$SERVICE_LINK"
+
+# --- Ensure all CLI tools in bin/ are executable -----------------------------
+chmod +x "$BIN_DIR"/*
+ok "Marked all bin/ scripts as executable"
+# ------------------------------------------------------------------------------
+
+# --- Install global symlinks -------------------------------------------------
+for tool in "$BIN_DIR"/*; do
+  name="$(basename "$tool")"
+  target="$GLOBAL_BIN_DIR/$name"
+  if [ ! -e "$target" ]; then
+    ln -sf "$tool" "$target"
+    ok "Installed CLI: $name -> $target"
+  else
+    ok "CLI already present: $target"
+  fi
+done
+# ------------------------------------------------------------------------------
+
+say "Starting service…"
+sv up Pickleball || warn "Could not start service immediately"
+
+ok "Service setup complete."
+echo
+echo "Check status with: sv status Pickleball"
+echo "Tail logs with:    tail -f $SERVICE_DIR/log/main/current"

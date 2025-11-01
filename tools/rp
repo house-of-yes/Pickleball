@@ -1,0 +1,313 @@
+#!/usr/bin/env bash
+# rp: replace file contents with clipboard (no editor)
+# - On any error, emit an Pickleball alert to $HOME/Pickleball/inbox/rp-alerts.ndjson
+# - Options:
+#     -b  keep a timestamped backup alongside target
+#     -y  auto-confirm replacement (no prompt)
+#     -t  run tests (no-op here, reserved hook)
+#     -c  cat the file after replace
+#     -q  suppress the final 55-char tail preview
+#     -l  override tail length in chars (default 55; env RP_TAIL_CHARS respected)
+# - Usage:
+#     rp [-b] [-y] [-t] [-c] [-q] [-l CHARS] [file]
+#     rp [-b] [-y] [-t] [-c] [-q] [-l CHARS]      # path taken from first nonblank clipboard line
+#
+# Behavior (per latest design):
+# - Confirmation line is concise, relative to $PWD, and indicates create/replace, bytes, and new dir (if any).
+# - After write, prints only the last N characters (default 55) of the file on a single line (ellipsis if truncated).
+# - Greppable result line: CREATE/REPLACE with byte counts.
+
+set -Eeuo pipefail
+
+usage() {
+  cat >&2 <<'USAGE'
+Usage: rp [-b] [-y] [-t] [-c] [-q] [-l CHARS] [file]
+  -b  keep a timestamped backup alongside target
+  -y  auto-confirm replacement (no prompt)
+  -t  run tests (no-op here, reserved hook)
+  -c  cat the file after replace
+  -q  suppress final 55-char tail preview
+  -l  tail length in characters (default 55; env RP_TAIL_CHARS respected)
+USAGE
+  exit 1
+}
+
+backup=0
+auto_yes=0
+run_tests=0
+do_cat=0
+suppress_tail=0
+tail_chars="${RP_TAIL_CHARS:-55}"
+
+while getopts ":bytcql:" opt; do
+  case "$opt" in
+    b) backup=1 ;;
+    y) auto_yes=1 ;;
+    t) run_tests=1 ;;
+    c) do_cat=1 ;;
+    q) suppress_tail=1 ;;
+    l) tail_chars="$OPTARG" ;;
+    *) usage ;;
+  esac
+done
+shift $((OPTIND-1))
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+# ---------- Pickleball alerting ----------
+notify_excalibur() {
+  # Args: level msg
+  local level="${1:-error}"
+  local msg="${2:-unknown error}"
+  local inbox="$HOME/Pickleball/inbox"
+  local file="$inbox/rp-alerts.ndjson"
+  mkdir -p "$inbox"
+  printf '{"ts":"%s","tool":"rp","level":"%s","cwd":"%s","msg":%s}\n' \
+    "$(date -u +%FT%TZ)" "$level" "$PWD" "$(printf '%s' "$msg" | python - <<'PY' 2>/dev/null || printf '%s' "$msg"
+import json,sys
+print(json.dumps(sys.stdin.read()))
+PY
+)" >>"$file" 2>/dev/null || true
+  if [[ -x "$HOME/Pickleball/bin/exc-notify" ]]; then
+    "$HOME/Pickleball/bin/exc-notify" --tool rp --level "$level" --message "$msg" || true
+  fi
+}
+
+trap 'notify_excalibur error "rp failed (exit=$?, line=${BASH_LINENO[*]}, cmd=${BASH_COMMAND})"; exit 1' ERR
+
+# ---------- helpers ----------
+clip() {
+  if   have termux-clipboard-get; then termux-clipboard-get
+  elif have pbpaste;              then pbpaste
+  elif have wl-paste;             then wl-paste
+  elif have xclip;                then xclip -selection clipboard -o
+  elif have xsel;                 then xsel --clipboard --output
+  else echo "No clipboard tool found." >&2; exit 1; fi
+}
+
+trim_ws() {
+  local s="${1:-}"
+  s="${s//$'\r'/}"
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  printf '%s' "$s"
+}
+
+clean_marker() {
+  local s; s="$(trim_ws "$1")"
+  # strip leading ``` or ```lang and trailing ```
+  if [[ "$s" =~ ^\`\`\` ]]; then
+    s="${s#\`\`\`}"
+    s="$(trim_ws "$s")"
+  fi
+  s="${s%\`\`\`}"
+  # strip leading '#' markdown header
+  case "$s" in \#*) s="${s#\#}"; s="$(trim_ws "$s")" ;; esac
+  # strip labels path:/file:/filepath:
+  case "${s,,}" in
+    path:*)     s="${s#*:}"; s="$(trim_ws "$s")" ;;
+    file:*)     s="${s#*:}"; s="$(trim_ws "$s")" ;;
+    filepath:*) s="${s#*:}"; s="$(trim_ws "$s")" ;;
+  esac
+  printf '%s' "$s"
+}
+
+repo_root() {
+  local d="$PWD"
+  while [[ "$d" != "/" ]]; do
+    if [[ -d "$d/.git" ]]; then echo "$d"; return 0; fi
+    d="$(dirname -- "$d")"
+  done
+  return 1
+}
+
+relpath_from_pwd() {
+  # Prefer path relative to invocation directory ($PWD)
+  local p="$1"
+  if have realpath; then
+    realpath --relative-to="$PWD" "$p" 2>/dev/null || printf '%s' "$p"
+  else
+    printf '%s' "$p"
+  fi
+}
+
+resolve_path() {
+  local p; p="$(clean_marker "$1")"
+  [[ "${p:0:1}" == "~" ]] && p="${HOME}${p:1}"
+  if [[ "$p" == /* ]]; then echo "$p"; return 0; fi
+
+  local top="${p%%/*}"; [[ -z "$top" ]] && top="$p"
+  local tail=""; [[ "$p" == */* ]] && tail="${p#*/}"
+
+  local bases=()
+  bases+=("$HOME/HouseOfYes")
+  if root="$(repo_root 2>/dev/null || true)"; then bases+=("$root"); fi
+  bases+=("$PWD" "$HOME/Pickleball")
+
+  local alt1="${top//_/-}"
+  local alt2="${top//-/_}"
+
+  local base
+  for base in "${bases[@]}"; do
+    if [[ -d "$base/$top" ]]; then
+      [[ -n "$tail" ]] && { echo "$base/$top/$tail"; return 0; } || { echo "$base/$top"; return 0; }
+    fi
+    if [[ "$alt1" != "$top" && -d "$base/$alt1" ]]; then
+      [[ -n "$tail" ]] && { echo "$base/$alt1/$tail"; return 0; } || { echo "$base/$alt1"; return 0; }
+    fi
+    if [[ "$alt2" != "$top" && -d "$base/$alt2" ]]; then
+      [[ -n "$tail" ]] && { echo "$base/$alt2/$tail"; return 0; } || { echo "$base/$alt2"; return 0; }
+    fi
+  done
+  [[ -n "$tail" ]] && echo "$PWD/$top/$tail" || echo "$PWD/$top"
+}
+
+write_bytes() {
+  # write_bytes <infile> <outfile> (atomic, preserve mode if exists)
+  local src="$1" dst="$2"
+  local dir; dir="$(dirname -- "$dst")"
+  mkdir -p -- "$dir"
+
+  local mode=""
+  if [[ -e "$dst" ]] && have stat; then
+    mode="$(stat -c '%a' "$dst" 2>/dev/null || stat -f '%Lp' "$dst" 2>/dev/null || true)"
+  fi
+
+  local tmp
+  tmp="$(mktemp "${dst##*/}.XXXXXX" -p "$dir" 2>/dev/null || mktemp)"
+  cat -- "$src" >"$tmp"
+  mv -f -- "$tmp" "$dst"
+  [[ -n "$mode" ]] && chmod "$mode" "$dst" 2>/dev/null || true
+}
+
+print_tail55() {
+  # Print only the last N characters of file on a single line, with leading ellipsis if truncated.
+  local f="$1" n="${2:-55}"
+  local size; size="$(wc -c <"$f" | tr -d '[:space:]')"
+  if [[ "$size" -gt "$n" ]]; then
+    printf '…'
+    tail -c "$n" -- "$f" | tr -d '\r'
+    printf '\n'
+  else
+    cat -- "$f" | tr -d '\r'
+    printf '\n'
+  fi
+}
+
+result_line() {
+  local is_new="$1" rel="$2" old_bytes="$3" new_bytes="$4"
+  if [[ "$is_new" == "yes" ]]; then
+    printf 'CREATE %s (%s bytes)\n' "$rel" "$new_bytes"
+  else
+    printf 'REPLACE %s (%s → %s bytes)\n' "$rel" "$old_bytes" "$new_bytes"
+  fi
+}
+
+confirm_prompt() {
+  # Build the exact confirmation line text (no [Y/n] suffix).
+  local is_new="$1" rel="$2" new_bytes="$3" will_create_dir="$4" created_rel_dir="$5" old_bytes="$6"
+  if [[ "$is_new" == "yes" ]]; then
+    if [[ "$will_create_dir" == "yes" ]]; then
+      printf "Create new file '**%s**' %s bytes & new directory **%s** (yes) " "$rel" "$new_bytes" "$created_rel_dir"
+    else
+      printf "Create new file '**%s**' %s bytes (yes) " "$rel" "$new_bytes"
+    fi
+  else
+    printf "Replace file '**%s**' %s→%s bytes (yes) " "$rel" "$old_bytes" "$new_bytes"
+  fi
+}
+
+# ---------- single-arg mode ----------
+if [[ $# -eq 1 ]]; then
+  file="$(resolve_path "$1")"
+  dir="$(dirname -- "$file")"
+
+  tmp_in="$(mktemp)"; trap 'rm -f "$tmp_in" || true' EXIT
+  ( clip || true ) >"$tmp_in"
+
+  new_bytes="$(wc -c <"$tmp_in" | tr -d '[:space:]')"
+  old_bytes=$([[ -e "$file" ]] && wc -c <"$file" | tr -d '[:space:]' || echo 0)
+  is_new=$([[ -e "$file" ]] && echo "no" || echo "yes")
+
+  rel="$(relpath_from_pwd "$file")"
+  rel_dir="$(relpath_from_pwd "$dir")"
+  will_create_dirs=$([[ -d "$dir" ]] && echo "no" || echo "yes")
+
+  if [[ $auto_yes -eq 0 ]]; then
+    confirm_prompt "$is_new" "$rel" "$new_bytes" "$will_create_dirs" "$rel_dir" "$old_bytes"
+    read -r ans || true
+    case "${ans:-}" in
+      n|N|no|NO) echo "Aborted."; exit 1 ;;
+      *) : ;;
+    esac
+  fi
+
+  [[ $backup -eq 1 && -e "$file" ]] && cp -p -- "$file" "${file}.bak.$(date +%Y%m%d-%H%M%S)" || true
+  mkdir -p -- "$dir"
+  write_bytes "$tmp_in" "$file"
+
+  result_line "$is_new" "$rel" "$old_bytes" "$new_bytes"
+  [[ $do_cat -eq 1 ]] && { echo "-----"; cat -- "$file"; }
+
+  if [[ $suppress_tail -eq 0 ]]; then
+    print_tail55 "$file" "$tail_chars"
+  fi
+
+  notify_excalibur info "rp wrote $rel"
+  exit 0
+fi
+
+[[ $# -eq 0 ]] || usage
+
+# ---------- clipboard-first-line mode ----------
+tmp="$(mktemp)"; trap 'rm -f "$tmp" || true' EXIT
+( clip || true ) >"$tmp"
+
+first_line_raw="$(grep -m1 -v '^[[:space:]]*$' "$tmp" || true)"
+first_line="$(clean_marker "${first_line_raw:-}")"
+
+if [[ -z "${first_line:-}" ]]; then
+  echo "Clipboard empty (no target filename found on first non-blank line)." >&2
+  exit 1
+fi
+
+file="$(resolve_path "$first_line")"
+dir="$(dirname -- "$file")"
+
+content="$(mktemp)"
+awk 'f||NF{ if(!f){f=1; next} print }' "$tmp" >"$content" || : >"$content"
+
+new_bytes="$(wc -c <"$content" | tr -d '[:space:]')"
+old_bytes=$([[ -e "$file" ]] && wc -c <"$file" | tr -d '[:space:]' || echo 0)
+is_new=$([[ -e "$file" ]] && echo "no" || echo "yes")
+
+rel="$(relpath_from_pwd "$file")"
+rel_dir="$(relpath_from_pwd "$dir")"
+will_create_dirs=$([[ -d "$dir" ]] && echo "no" || echo "yes")
+
+if [[ $auto_yes -eq 0 ]]; then
+  confirm_prompt "$is_new" "$rel" "$new_bytes" "$will_create_dirs" "$rel_dir" "$old_bytes"
+  read -r ans || true
+  case "${ans:-}" in
+    n|N|no|NO) echo "Aborted."; exit 1 ;;
+    *) : ;;
+  esac
+fi
+
+mkdir -p -- "$dir"
+[[ $backup -eq 1 && -e "$file" ]] && cp -p -- "$file" "${file}.bak.$(date +%Y%m%d-%H%M%S)" || true
+write_bytes "$content" "$file"
+
+result_line "$is_new" "$rel" "$old_bytes" "$new_bytes"
+[[ $do_cat -eq 1 ]] && { echo "-----"; cat -- "$file"; }
+
+if [[ $suppress_tail -eq 0 ]]; then
+  print_tail55 "$file" "$tail_chars"
+fi
+
+if [[ $run_tests -eq 1 ]]; then
+  : # reserved
+fi
+
+notify_excalibur info "rp wrote $rel"
+exit 0

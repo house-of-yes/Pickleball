@@ -1,0 +1,94 @@
+# Pickleball: The Cyborg’s Guide
+
+This guide is both human- and machine-readable.  
+It describes Pickleball’s capabilities, usage patterns, and integration points.  
+It is meant to expand as Pickleball itself grows.
+
+---
+
+## 1. Overview
+- **Purpose**: Pickleball is the Captain’s flow-state engine — a toolchain that bootstraps, runs, and extends the development environment.  
+- **Nature**: It lives in Termux (Android), connects daemons, scripts, and repos, and ensures a stable, flexible coding loop.  
+- **Principle**: Protect, enable, and affirm flow. Every capability exists to reduce friction and expand reach.
+
+---
+
+## 2. Core Tools
+Pickleball’s strength lies in a compact toolkit that turns Termux into a flow-state engine. Each tool has a narrow purpose but contributes to the larger discipline enforced by the **riot.act**.
+
+- **`rp`** — Canonical replace-and-push operator. Takes the most recent block and writes it to the declared path.  
+- **`rpx`** — Extended variant with additional checks.  
+- **`dumpdir`** — Snapshot tool for directory state, excluding noise (`.git/`, venv, etc.).  
+- **`dump_inline`** — Lightweight inline snapshot, prints directory trees in-session.  
+- **`xf`** — Extract/pack helper for tarballs, zip files, and state bundles.  
+- **`kscan`** — Runtime scanner for verifying environment and detecting drift.  
+- **`termux-service-setup`** — Configures persistent daemons inside Termux.
+
+---
+
+## 3. Context Integration
+Context files define the working environment and enforce discipline. They shape how development proceeds.
+
+- **`riot.act`** — Standing rules for workflow discipline, coding standards, and interaction protocols.  
+- **`logging_guidelines.md`** — Opinionated rules for structured, safe, and reliable logging.  
+- **`README.md` (HouseOfYes/context)** — Orientation file; explains the contents and roles of context materials.  
+- **`bookmarks.md`** — Tracks active and suspended threads for continuity.  
+- **`kudos.md`** — Log of recognition, breakthroughs, and bright moments.
+
+---
+
+## 4. Logging & State
+Pickleball maintains both human-readable logs and machine-readable state.
+
+- **Logs**: `var/logs/bootstrap.latest.log` records the most recent bootstrap run in plain text.  
+- **State**: `var/state/bootstrap.json` stores a structured machine-readable snapshot.  
+- **Principle**: Every operation leaves a trace. Logs and state must remain consistent, and nothing runs silently.
+
+---
+
+## 5. Flow Practices
+Pickleball encodes not just tools but disciplined ways of working.
+
+- **Rapid Bounce-Back** — On errors, respond with a fix immediately.  
+- **Root Cause Discipline** — Fix underlying issues; instrument before guessing.  
+- **Consistency First** — Favor simplicity and uniformity over cleverness.  
+- **Silence over Filler** — Minimal responses unless elaboration is required.  
+- **Clear Boundaries** — Respect repo and context separation; ask rather than assume.
+
+---
+
+## 6. Expansion Slots
+Pickleball is designed to grow. The following areas are reserved for future capabilities:
+
+- **Daemon Management** — Persistent background services for agents, alerts, and automation.  
+- **Signal Analysis** — Integration points for wallet and token pipelines.  
+- **IDE Bridge** — Remote-controlled development loop linking Termux with external editors.  
+- **Cross-Platform Support** — Expansion to environments beyond Android/Termux, including iOS and Linux. This will allow Pickleball’s workflow and discipline to operate consistently across multiple operating systems.  
+- **Other Futures** — Additional integrations or rituals as the system matures.
+
+---
+
+## 7. Pickleball
+
+Pickleball is the working metaphor and shorthand for Pickleball’s development workflow. It describes not only the back-and-forth rhythm between Captain and Cyborg but also the standards that keep progress smooth.
+
+### Origins
+- The term emerged as a way to describe the “bounce” of rapid fixes and responses.  
+- It emphasizes pace, rhythm, and continuity over perfection in a single strike.  
+
+### Core Principles
+- **Serve** — Every new task or change begins cleanly, with context clearly set.  
+- **Rally** — The back-and-forth between Captain and Cyborg; quick exchanges that move work forward.  
+- **Bounce-Back** — Errors are returned rapidly, corrected on the next shot.  
+- **Boundaries** — Repos and contexts act as court lines; staying inside them maintains discipline.  
+- **Scorekeeping** — Recognition and feedback (flowers, trophies, kudos) record progress and maintain morale.  
+- **Timeouts** — Bookmarks allow pausing without losing the thread.
+
+### Why It Matters
+- Keeps flow intact by valuing responsiveness over delay.  
+- Reduces cognitive load by preventing drift into digressions.  
+- Provides a common language for interaction — when we say “Pickleball,” we mean working in this disciplined, fast-return rhythm.
+
+### Future Use
+- The metaphor may evolve or be renamed, but the underlying playflow will remain central.  
+- Pickleball’s rituals, tools, and contexts are all tuned to serve this way of working.

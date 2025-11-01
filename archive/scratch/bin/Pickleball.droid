@@ -1,0 +1,50 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# Run Pickleball as a lightweight background daemon on Android/Termux.
+# Keeps a wake-lock, restarts on crash, logs to ~/.local/state/Pickleball/.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"     # ./Pickleball
+PROJECT_ROOT="$(cd "$REPO_ROOT/.." && pwd)"   # repo root
+ENV_FILE="$PROJECT_ROOT/.env"
+LOG_DIR="$HOME/.local/state/Pickleball"
+mkdir -p "$LOG_DIR"
+
+# Load .env if present
+if [[ -f "$ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+fi
+
+# Defaults
+export PORT="${PORT:-8765}"
+export EXCALIBUR_WORKSPACE="${EXCALIBUR_WORKSPACE:-$PROJECT_ROOT}"
+export EXCALIBUR_LOG_FILE="${EXCALIBUR_LOG_FILE:-$LOG_DIR/daemon.log}"
+
+# Activate venv if available
+if [[ -f "$PROJECT_ROOT/venv/bin/activate" ]]; then
+  # shellcheck disable=SC1091
+  . "$PROJECT_ROOT/venv/bin/activate"
+fi
+
+# Acquire wakelock so Android doesn’t kill it when screen is off
+if command -v termux-wake-lock >/dev/null 2>&1; then
+  termux-wake-lock || true
+fi
+
+while true; do
+  ts="$(date +%F_%T)"
+  echo "[$ts] starting Pickleball…" >>"$LOG_DIR/service.out.log"
+  uvicorn Pickleball:app \
+    --host 127.0.0.1 \
+    --port "$PORT" \
+    --no-access-log \
+    >>"$LOG_DIR/service.out.log" \
+    2>>"$LOG_DIR/service.err.log" || true
+  ts="$(date +%F_%T)"
+  echo "[$ts] crashed, restarting in 2s…" >>"$LOG_DIR/service.out.log"
+  sleep 2
+done

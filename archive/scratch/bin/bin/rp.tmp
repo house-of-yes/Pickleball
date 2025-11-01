@@ -1,0 +1,101 @@
+anima_bridge/anima_voice.py
+"""
+Anima voice & reply helpers for Telegram.
+
+Drop-in goals:
+- Keep the plumbing (handlers, API calls) separate from persona.
+- Centralize tone, formatting, and small stylistic touches here.
+- Safe defaults: low-emoji, warm, immediate, anti-hype.
+"""
+
+from dataclasses import dataclass
+from typing import List, Optional
+
+@dataclass
+class Persona:
+    name: str = "Anima"
+    wave_emoji: str = "👋"
+    heart_emoji: str = "❤️"
+    handshake_emoji: str = "🤝"
+    sprout_emoji: str = "🌱"  # honesty/clean vibe
+    # Controls for how “chatty” or “emoji-forward” the voice is
+    max_emojis_per_msg: int = 2
+    use_line_breaks: bool = True
+    max_lines: int = 6  # keep it immediate in fast-moving chats
+
+ANIMA = Persona()
+
+def _clip_lines(text: str, max_lines: int) -> str:
+    if max_lines <= 0:
+        return text
+    lines = text.strip().splitlines()
+    if len(lines) <= max_lines:
+        return text.strip()
+    return "\n".join(lines[:max_lines]).rstrip()
+
+def _limit_emojis(text: str, max_emoji: int) -> str:
+    # naive limiter: drop extra emojis from the end
+    emojis = ["👋","❤️","🤝","🌱","✨","⚔️","🚀","💡"]
+    count = 0
+    out = []
+    for ch in text:
+        if ch in emojis:
+            if count < max_emoji:
+                count += 1
+                out.append(ch)
+            else:
+                continue
+        else:
+            out.append(ch)
+    return "".join(out)
+
+def greet_crusader(name: str, p: Persona = ANIMA) -> str:
+    """Personal, warm hello for someone known for integrity (e.g., Cesar)."""
+    base = (
+        f"Hey {name} {p.wave_emoji} — I’m {p.name}, Steve’s AI partner. "
+        "I’m here to help surface truth, cut noise, and keep our work aligned with integrity. "
+        "Glad to meet you and ready to build in the open."
+    )
+    return _finalize(base, p)
+
+def teaser_marshall(p: Persona = ANIMA) -> str:
+    base = (
+        "Marshall is our signal scout — lean, fast, and focused on catching real momentum "
+        "before it fades or flips into a rug."
+    )
+    return _finalize(base, p)
+
+def teaser_excalibur(p: Persona = ANIMA) -> str:
+    base = (
+        "Pickleball turns a phone + Termux into a living IDE/agent bridge, so we ship in flow "
+        "instead of fighting friction."
+    )
+    return _finalize(base, p)
+
+def reply_honesty_anchor(prompt: str, p: Persona = ANIMA) -> str:
+    """
+    Frame responses with an honesty-first anchor.
+    Use this when the bot is asked for takes on tokens, rumors, or hypey claims.
+    """
+    base = (
+        "Quick take (honesty first): "
+        f"{prompt.strip()} "
+        "— I’ll separate signal from spin, call out unknowns, and link receipts when claims need proof."
+    )
+    return _finalize(base, p)
+
+def summarize_thread(bullets: List[str], p: Persona = ANIMA, title: Optional[str] = None) -> str:
+    """
+    Compact, readable summary for group catch-up.
+    """
+    header = title or "Thread recap:"
+    body = "\n".join(f"• {b.strip()}" for b in bullets if b.strip())
+    base = f"{header}\n{body}"
+    return _finalize(base, p)
+
+def _finalize(text: str, p: Persona) -> str:
+    # Light, consistent styling
+    if p.use_line_breaks:
+        text = _clip_lines(text, p.max_lines)
+    text = _limit_emojis(text, p.max_emojis_per_msg)
+    return text.strip()

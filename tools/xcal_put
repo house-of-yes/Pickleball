@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Send stdin to the running service as the content for the given repo path.
+# Usage: cat <new-content> | tools/xcal_put path/inside/repo.ext
+set -euo pipefail
+IFS=$'\n\t'
+
+path="${1:-}"
+[[ -z "$path" ]] && { echo "usage: xcal_put <repo-path>  (reads content from stdin)"; exit 2; }
+
+host="${EX_HOST:-127.0.0.1}"
+port="${EX_PORT:-8765}"
+token="${EX_TOKEN:-}"
+
+hdr_auth=()
+[[ -n "$token" ]] && hdr_auth=(-H "Authorization: Bearer ${token}")
+
+tmp="$(mktemp)"
+trap 'rm -f "$tmp"' EXIT
+
+cat >"$tmp"
+
+curl -s -X POST \
+  -H "Content-Type: text/plain; charset=utf-8" \
+  -H "X-Path: ${path}" \
+  "${hdr_auth[@]}" \
+  --data-binary @"$tmp" \
+  "http://${host}:${port}/apply" | jq -r '.ok // .err // .status // .bytes // "."'

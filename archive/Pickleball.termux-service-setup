@@ -1,0 +1,83 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# Install & (re)start Pickleball as a Termux runit service.
+set -euo pipefail
+
+# --- paths --------------------------------------------------------------------
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SERVICE_NAME="Pickleball"
+SERVICE_DIR="$PREFIX/var/service/$SERVICE_NAME"
+LOG_DIR="$HOME/.local/state/Pickleball"
+ENV_FILE="$REPO_ROOT/.env"
+
+mkdir -p "$LOG_DIR"
+
+# --- ensure termux-services is present ----------------------------------------
+if ! command -v sv-enable >/dev/null 2>&1; then
+  echo "[i] Installing termux-services…"
+  pkg install -y termux-services
+  echo "[i] termux-services installed."
+fi
+
+# --- create service run script ------------------------------------------------
+mkdir -p "$SERVICE_DIR"
+cat >"$SERVICE_DIR/run" <<'RUN'
+#!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
+LOG_DIR="$HOME/.local/state/Pickleball"
+mkdir -p "$LOG_DIR"
+
+# Export variables from .env if present
+ENV_FILE="$REPO_ROOT/.env"
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+fi
+
+# Defaults if not provided
+export EXCALIBUR_WORKSPACE="${EXCALIBUR_WORKSPACE:-$REPO_ROOT}"
+export EXCALIBUR_LOG_FILE="${EXCALIBUR_LOG_FILE:-$LOG_DIR/daemon.log}"
+export PORT="${PORT:-8765}"
+
+# Activate venv if exists
+if [ -f "$REPO_ROOT/venv/bin/activate" ]; then
+  # shellcheck disable=SC1091
+  . "$REPO_ROOT/venv/bin/activate"
+fi
+
+exec 1>>"$LOG_DIR/service.out.log"
+exec 2>>"$LOG_DIR/service.err.log"
+
+# Launch Starlette app
+exec uvicorn Pickleball:app --host 127.0.0.1 --port "$PORT" --no-access-log
+RUN
+chmod +x "$SERVICE_DIR/run"
+
+# --- optional: log run script (svlogd) ---------------------------------------
+mkdir -p "$SERVICE_DIR/log"
+cat >"$SERVICE_DIR/log/run" <<'LOG'
+#!/data/data/com.termux/files/usr/bin/bash
+exec svlogd -tt ./main
+LOG
+chmod +x "$SERVICE_DIR/log/run"
+mkdir -p "$SERVICE_DIR/log/main"
+
+# --- enable & (re)start -------------------------------------------------------
+echo "[i] Enabling service $SERVICE_NAME…"
+sv-enable "$SERVICE_NAME" || true
+
+echo "[i] Restarting service $SERVICE_NAME…"
+sv down "$SERVICE_NAME" >/dev/null 2>&1 || true
+sleep 0.2
+sv up "$SERVICE_NAME"
+
+echo "[✓] Service is up. Logs:"
+echo "    tail -f $SERVICE_DIR/log/main/current"
+echo "    tail -f $HOME/.local/state/Pickleball/service.err.log"
+echo
+echo "    API: http://127.0.0.1:${PORT:-8765}/health"
+```0
