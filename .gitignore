@@ -1,0 +1,19 @@
+# Logs
+var/logs/
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+
+# Python / node / build
+__pycache__/
+*.pyc
+node_modules/
+dist/
+build/
+
+# Archives
+*.zip
+*.tgz
+*.tar.gz
