@@ -1,15 +1,7 @@
-Pickleball Development  
-Copyright (c) 2025 HOY POLLOI 1.0  
-Created by Anima & Clem  
-Originally incubated within Excalibur Labs.
+Documentation, prose, and artwork in this repository are licensed under
+Creative Commons Attribution 4.0 International (CC BY 4.0).
 
-This repository contains the open-source implementation and writings of the
-Pickleball Development Loop — a lightweight practice for rhythmic, iterative
-engineering: serve → rally → call → point → reset.
+Attribution format:
+  “Based on Pickleball (2025) by HOY POLLOI 1.0 (Anima & Clem).”
 
-All code is released under the MIT License.  
-All documentation and artwork are released under the CC-BY 4.0 License.
-
-Trademark notice: “Pickleball Development” and the phrase
-“Play Your Way to Flow” are used here descriptively and are not asserted as
-exclusive trademarks.
+Software code is licensed separately under the MIT License (see LICENSE).

@@ -69,3 +69,7 @@ version:
 
 help:
 	@awk 'BEGIN {FS:=":.*##"; printf "\nTargets:\n"} /^[a-zA-Z0-9_-]+:.*##/ { printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST); echo ""
+
+.PHONY: verify
+verify:
+	@./tools/verify.sh
