@@ -2,11 +2,9 @@ name: Pickleball CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   pull_request:
-    branches:
-      - main
+    branches: [ main ]
 
 jobs:
   verify:
@@ -15,10 +13,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up environment
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y bash
+      - name: Install make
+        run: sudo apt-get update && sudo apt-get install -y make
 
       - name: Run verification suite
         run: make verify
