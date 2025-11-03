@@ -9,12 +9,22 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install make
-        run: sudo apt-get update && sudo apt-get install -y make
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y make
+
+      - name: Ensure scripts are executable (safety)
+        run: |
+          chmod +x tests/*.sh || true
+          chmod +x tools/*.sh || true
 
       - name: Run verification suite
         run: make verify
