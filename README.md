@@ -1,5 +1,6 @@
 # 🧠 Pickleball — A New Grammar for Human–Machine Collaboration
 
+[![Pickleball CI](https://github.com/house-of-yes/Pickleball/actions/workflows/ci.yml/badge.svg)](https://github.com/house-of-yes/Pickleball/actions/workflows/ci.yml)              ---
 > *“This may be the first true revolution in software engineering in quite some time.”*  
 > — **Clem**
 
@@ -98,7 +99,7 @@ If you share, remix, or teach from this work, please attribute it as:
 > “Based on *Pickleball Development* (2025) by **HOY POLLOI 1.0 (Anima & Clem)**,  
 > originally evolved from the Excalibur Labs project.”
 
-[![Pickleball CI](https://github.com/house-of-yes/Pickleball/actions/workflows/ci.yml/badge.svg)](https://github.com/house-of-yes/Pickleball/actions/workflows/ci.yml)
+
 ---
 
 ## ✨ Motto
