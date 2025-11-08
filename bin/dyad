@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# dyad — minimal router for two-word commands (dyads)
+
+set -euo pipefail
+TOP="${TOP:-$(pwd)}"
+
+# get phrase (env var DYAD or first args)
+DYAD="${DYAD:-${*:-}}"
+DYAD="${DYAD,,}"   # lowercase normalize
+
+case "$DYAD" in
+  "phoenix ops"|"phoenix")
+    exec "$TOP/bin/dyad-phoenix"
+    ;;
+  *)
+    echo "Unknown dyad: '$DYAD'" >&2
+    exit 1
+    ;;
+esac

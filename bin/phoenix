@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+[ -f "$TOP/bin/phoenix-manifesto.sh" ] && . "$TOP/bin/phoenix-manifesto.sh" || . "bin/phoenix-manifesto.sh"
+# phoenix — Excalibur/Pickleball Phoenix Ops entrypoint (minimal)
+set -euo pipefail
+TOP="${TOP:-$(pwd)}"
+# loader hook (patched below)
+[ -f "$TOP/bin/phoenix-manifesto.sh" ] && . "$TOP/bin/phoenix-manifesto.sh" || . "bin/phoenix-manifesto.sh"
+echo "Phoenix: minimal entrypoint ready." >&2

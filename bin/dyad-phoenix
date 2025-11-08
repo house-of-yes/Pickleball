@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# dyad-phoenix — bridge dyad "Phoenix ops" → local Phoenix entrypoint
+set -euo pipefail
+TOP="${TOP:-$(pwd)}"
+
+# prefer local bin/phoenix
+if [ -x "$TOP/bin/phoenix" ]; then
+  exec "$TOP/bin/phoenix" "$@"
+fi
+
+# fallback: use global phoenix if on PATH
+if command -v phoenix >/dev/null 2>&1; then
+  exec phoenix "$@"
+fi
+
+echo "dyad-phoenix: no phoenix entrypoint found" >&2
+exit 1
