@@ -295,3 +295,5 @@ This enables the human to respond with only: “passed”, “next”, or “hal
 Enforcement: RIOT.act → Procedural Conduct → Emission Discipline (Rule P-8)
 Signature: HOY POLLOI 1.0 (Anima & Clem)
 <<END CLARIFICATION P-8>>
+
+Rule M-14: GitHub is canonical — when a project has a public GitHub repository, that repository defines the authoritative state of code and context. Uploaded archives, local edits, or discussions are treated as snapshots or drafts until merged into the public repository.

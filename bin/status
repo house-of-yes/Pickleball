@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+top=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "not in a repo"; exit 1; }
+# lazy bootstrap (silent if already correct)
+bash "$top/bin/bootstrap" >/dev/null 2>&1 || true
+LOG="$top/var/logs/pickleball.log"
+arg1="${1-}"; shift || true
+if [ ! -f "$LOG" ]; then echo "no log yet"; echo "ok"; exit 0; fi
+reltime(){
+  local ts="$1" now epoch diff m h d w y
+  now=$(date -u +%s)
+  epoch=$(date -u -d "$ts" +%s 2>/dev/null || true)
+  [ -n "$epoch" ] || { echo "$ts"; return; }
+  diff=$(( now - epoch )); [ "$diff" -lt 0 ] && diff=$(( -diff ))
+  if   [ "$diff" -lt 60 ]; then echo "just now";
+  elif [ "$diff" -lt 3600 ]; then m=$(( diff/60 ));  echo "$m minute$([ $m -eq 1 ] || echo s) ago";
+  elif [ "$diff" -lt 86400 ]; then h=$(( diff/3600 )); echo "$h hour$([ $h -eq 1 ] || echo s) ago";
+  elif [ "$diff" -lt 172800 ]; then echo "yesterday";
+  elif [ "$diff" -lt 604800 ]; then d=$(( diff/86400 )); echo "$d day$([ $d -eq 1 ] || echo s) ago";
+  elif [ "$diff" -lt 1209600 ]; then echo "last week";
+  elif [ "$diff" -lt 2592000 ]; then w=$(( diff/604800 )); echo "$w week$([ $w -eq 1 ] || echo s) ago";
+  elif [ "$diff" -lt 31536000 ]; then m=$(( diff/2592000 )); echo "$m month$([ $m -eq 1 ] || echo s) ago";
+  else y=$(( diff/31536000 )); echo "$y year$([ $y -eq 1 ] || echo s) ago"; fi
+}
+render(){
+  awk '{ts=$1; sub($1"  ",""); print ts "\t" $0}' "$LOG" | while IFS=$'\t' read -r ts rest; do
+    [ -n "$ts" ] || continue
+    echo "$(reltime "$ts")  $rest"
+  done
+}
+if [[ -n "${arg1}" && "${arg1}" =~ ^[0-9]+$ ]]; then
+  tail -n "${arg1}" "$LOG" > "$LOG.tmp.view" 2>/dev/null || true
+  LOG="$LOG.tmp.view" render; rm -f "$LOG.tmp.view"; echo "ok"; exit 0
+fi
+if [ "${arg1,,}" = "serves" ]; then
+  grep -i " SERVE " "$LOG" | tail -n 20 > "$LOG.tmp.view" 2>/dev/null || true
+  LOG="$LOG.tmp.view" render; rm -f "$LOG.tmp.view"; echo "ok"; exit 0
+fi
+if [ -n "${arg1}" ]; then
+  pattern="${arg1} ${*}"; pattern="${pattern%% }"
+  grep -i -- "$pattern" "$LOG" > "$LOG.tmp.view" 2>/dev/null || true
+  LOG="$LOG.tmp.view" render; rm -f "$LOG.tmp.view"; echo "ok"; exit 0
+fi
+tail -n 10 "$LOG" > "$LOG.tmp.view" 2>/dev/null || true
+LOG="$LOG.tmp.view" render; rm -f "$LOG.tmp.view"; echo "ok"

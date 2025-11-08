@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+top=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "not in a repo"; exit 1; }
+# lazy bootstrap (silent if already correct)
+bash "$top/bin/bootstrap" >/dev/null 2>&1 || true
+LOG="$top/var/logs/pickleball.log"
+mkdir -p "$(dirname "$LOG")"
+intent="$*"
+[ -n "$intent" ] || { echo "nothing to serve"; exit 1; }
+ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+printf "%s  SERVE  %s\n" "$ts" "$intent" >> "$LOG"
+echo "ok"

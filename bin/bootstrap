@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+guard() {
+  local top
+  top=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "not in a repo"; exit 1; }
+  mkdir -p "$top/var/logs" || true
+  # ensure executables in bin/ and tools/ (if present)
+  for dir in "$top/bin" "$top/tools"; do
+    [ -d "$dir" ] || continue
+    find "$dir" -maxdepth 1 -type f -print0 2>/dev/null | xargs -0 -r chmod +x || true
+  done
+  # PATH for this process and persistently
+  case ":$PATH:" in *":$top/bin:"*) ;; *) export PATH="$top/bin:$PATH";
+    if ! grep -qF "$top/bin" "$HOME/.bashrc" 2>/dev/null; then printf "%s\n" "export PATH=\"$top/bin:\$PATH\"" >> "$HOME/.bashrc"; fi ;; esac
+  # stamp on first bootstrap
+  if [ ! -f "$top/var/.bootstrapped" ]; then
+    date -u +%Y-%m-%dT%H:%M:%SZ > "$top/var/.bootstrapped"
+    echo "$(date -u +%FT%TZ) bootstrap" >> "$top/var/logs/bootstrap.log"
+  fi
+}
+guard
+echo "ok bootstrap"
