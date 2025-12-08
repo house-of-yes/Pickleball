@@ -17,3 +17,5 @@ build/
 *.zip
 *.tgz
 *.tar.gz
+var/inbox/
+var/backups/

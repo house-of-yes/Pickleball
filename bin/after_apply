@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+top=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "not in a repo"; exit 1; }
+
+# PURPOSE:
+#   This stub runs immediately AFTER a file has been applied (once the "yes" runner exists).
+#   Today it is a no-op fallback that can be called safely. It ends with "ok".
+#   Later behavior (bookmark):
+#     - If var/logs/tests_failures.log has entries, selectively rerun those tests.
+#     - If selective rerun passes, record "ok verify pass after fix"; otherwise "fail verify still broken".
+#     - Keep output to one-line signals (Green Stream) and append a single line to var/logs/applies.log.
+
+fail_log="$top/var/logs/tests_failures.log"
+applies_log="$top/var/logs/applies.log"
+
+# CURRENT STUB: if there was a recent failure recorded, just attempt a full verify as a placeholder.
+if [ -s "$fail_log" ]; then
+  if [ -f "$top/Makefile" ]; then
+    if make -s -C "$top" verify >/dev/null 2>&1; then
+      echo "$(date -u +%FT%TZ) post-apply verify pass (stub)" >> "$applies_log"
+      : > "$fail_log"  # clear failures on pass
+    else
+      echo "$(date -u +%FT%TZ) post-apply verify still failing (stub)" >> "$applies_log"
+    fi
+  fi
+fi
+echo "ok"

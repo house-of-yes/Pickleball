@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+top=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "not in a repo"; exit 1; }
+fail_log="$top/var/logs/tests_failures.log"
+
+# PURPOSE:
+#   Temporary wrapper so CI/local calls can do `bin/verify`.
+#   Today it just runs `make verify` and records a failure breadcrumb if it fails.
+#   Later we will parse test output to capture only failing test selectors for targeted reruns.
+
+if [ ! -f "$top/Makefile" ]; then
+  echo "no Makefile; verify skipped" > "$fail_log"
+  echo "ok"
+  exit 0
+fi
+
+if make -s -C "$top" verify; then
+  : > "$fail_log"  # clear on pass
+  echo "ok"
+else
+  # STUB NOTE: capture a concise breadcrumb for later selective reruns.
+  # In future: parse failing test IDs (pytest -q/-k names, bash test names, etc.).
+  echo "$(date -u +%FT%TZ) verify failed (stub; selectors TBD)" > "$fail_log"
+  exit 1
+fi

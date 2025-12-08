@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# status: show recent pickleball log entries (number or free-text filter), humanized timestamps
+# NOTE: lazy bootstrap guard enabled; timestamps are rendered as relative “time ago”.
 set -euo pipefail
 top=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "not in a repo"; exit 1; }
 # lazy bootstrap (silent if already correct)
@@ -6,6 +8,8 @@ bash "$top/bin/bootstrap" >/dev/null 2>&1 || true
 LOG="$top/var/logs/pickleball.log"
 arg1="${1-}"; shift || true
 if [ ! -f "$LOG" ]; then echo "no log yet"; echo "ok"; exit 0; fi
+
+# reltime()
 reltime(){
   local ts="$1" now epoch diff m h d w y
   now=$(date -u +%s)
@@ -22,24 +26,31 @@ reltime(){
   elif [ "$diff" -lt 31536000 ]; then m=$(( diff/2592000 )); echo "$m month$([ $m -eq 1 ] || echo s) ago";
   else y=$(( diff/31536000 )); echo "$y year$([ $y -eq 1 ] || echo s) ago"; fi
 }
+
+# render()
 render(){
   awk '{ts=$1; sub($1"  ",""); print ts "\t" $0}' "$LOG" | while IFS=$'\t' read -r ts rest; do
     [ -n "$ts" ] || continue
     echo "$(reltime "$ts")  $rest"
   done
 }
+
+# selection logic
 if [[ -n "${arg1}" && "${arg1}" =~ ^[0-9]+$ ]]; then
   tail -n "${arg1}" "$LOG" > "$LOG.tmp.view" 2>/dev/null || true
   LOG="$LOG.tmp.view" render; rm -f "$LOG.tmp.view"; echo "ok"; exit 0
 fi
+
 if [ "${arg1,,}" = "serves" ]; then
   grep -i " SERVE " "$LOG" | tail -n 20 > "$LOG.tmp.view" 2>/dev/null || true
   LOG="$LOG.tmp.view" render; rm -f "$LOG.tmp.view"; echo "ok"; exit 0
 fi
+
 if [ -n "${arg1}" ]; then
   pattern="${arg1} ${*}"; pattern="${pattern%% }"
   grep -i -- "$pattern" "$LOG" > "$LOG.tmp.view" 2>/dev/null || true
   LOG="$LOG.tmp.view" render; rm -f "$LOG.tmp.view"; echo "ok"; exit 0
 fi
+
 tail -n 10 "$LOG" > "$LOG.tmp.view" 2>/dev/null || true
 LOG="$LOG.tmp.view" render; rm -f "$LOG.tmp.view"; echo "ok"

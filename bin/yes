@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+top=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "not in a repo"; exit 1; }
+
+# lazy bootstrap (silent if already correct)
+if [ -x "$top/bin/bootstrap" ]; then
+  bash "$top/bin/bootstrap" >/dev/null 2>&1 || true
+fi
+
+inbox="$top/var/inbox"
+logs="$top/var/logs"
+bkp="$top/var/backups"
+
+meta="$inbox/last_rp.json"
+body="$inbox/last_rp.body"
+
+if [ ! -f "$body" ]; then
+  echo "no change staged"
+  exit 1
+fi
+
+# metadata (null-safe)
+path=$(jq -r '.path // ""' "$meta" 2>/dev/null || true)
+want=$(jq -r '.sha256 // ""' "$meta" 2>/dev/null || true)
+
+if [ -z "$path" ]; then
+  echo "fail missing-path"
+  exit 1
+fi
+
+# path safety: repo-relative, no .., no leading /
+case "$path" in
+  /*|*../*|../*|*/../*|*//*)
+    echo "fail unsafe-path path=$path"
+    exit 1
+    ;;
+esac
+
+tgt="$top/$path"
+mkdir -p "$(dirname "$tgt")"
+mkdir -p "$inbox" "$logs" "$bkp"
+
+ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+newsha=$(sha256sum "$body" | awk '{print $1}')
+
+if [ -n "$want" ] && [ "$newsha" != "$want" ]; then
+  echo "fail sha-mismatch expected=$want got=$newsha"
+  exit 1
+fi
+
+# backup if exists
+bkppath="$bkp/$(echo "$path" | sed 's#/#__#g').$ts"
+if [ -f "$tgt" ]; then
+  cp -f "$tgt" "$bkppath"
+fi
+
+# atomic write
+tmp_tgt="$tgt.__apply.$$.tmp"
+cp -f "$body" "$tmp_tgt"
+sync "$tmp_tgt" 2>/dev/null || true
+mv -f "$tmp_tgt" "$tgt"
+
+bytes=$(wc -c < "$tgt" | tr -d ' ')
+echo "ok write path=$path bytes=$bytes sha=${newsha:0:8}"
+
+# readback confirm
+gotsha=$(sha256sum "$tgt" | awk '{print $1}')
+if [ "$gotsha" != "$newsha" ]; then
+  echo "fail write-mismatch expected=${newsha:0:8} got=${gotsha:0:8}"
+  exit 1
+fi
+echo "ok readback sha-match"
+
+# verify (advisory only; no rollback)
+verdict="skipped"
+if [ -x "$top/bin/verify" ]; then
+  if "$top/bin/verify" >/dev/null 2>&1; then
+    verdict="pass"
+    echo "ok verify pass"
+  else
+    verdict="fail"
+    echo "fail verify kept-backup=$bkppath"
+  fi
+elif [ -f "$top/Makefile" ]; then
+  if make -s -C "$top" verify >/dev/null 2>&1; then
+    verdict="pass"
+    echo "ok verify pass"
+  else
+    verdict="fail"
+    echo "fail verify kept-backup=$bkppath"
+  fi
+else
+  echo "ok verify skipped"
+fi
+
+# after_apply hook (stubbed now)
+if [ -x "$top/bin/after_apply" ]; then
+  "$top/bin/after_apply" >/dev/null 2>&1 || true
+fi
+
+echo "$ts apply $path sha=${newsha:0:8} $verdict" >> "$logs/applies.log"
+rm -f "$meta" "$body" 2>/dev/null || true
+
+echo "ok"
